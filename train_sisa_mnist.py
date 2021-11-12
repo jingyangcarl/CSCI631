@@ -9,38 +9,52 @@ import random
 if __name__ == '__main__':
 
     # Sample dataset
-    data_all = fetch_kddcup99(download_if_missing=True)
+    data_train = datasets.MNIST(root='data', train=True, transform=ToTensor(), download=True)
+    data_test = datasets.MNIST(root='data', train=False, transform=ToTensor())
+    print(f'train: {data_train.data.size()}; test: {data_test.data.size()}')
 
-    features = data_all.data[:, 4:] # 494021 * 37
-    labels = data_all.target # 494021
-    print(features[0:5], labels[0:5])
+    # get img and label
+    img_train, label_train = data_train.data, data_train.targets # 60000*28*28, 60000
+    img_test, label_test = data_test.data, data_test.targets # 10000*28*28, 10000
+    len_train, len_test = img_train.shape[0], img_test.shape[0]
 
-    le = LabelEncoder()
-    labels = le.fit_transform(labels) # 494021
+    # reshape
+    feature_train = img_train.reshape((len_train, -1)) # 60000, 784
+    feature_test = img_test.reshape((len_test, -1)) # 10000, 784
 
-    N, D = features.shape
-    unique_ids = list(range(N)) # 494021
-    data = []
-    for i in range(N):
-        data.append([unique_ids[i], features[i], labels[i]])
+    id_train = list(range(len_train))
+    id_test = list(range(len_test))
+
+    # features = data_all.data[:, 4:] # 494021 * 37
+    # labels = data_all.target # 494021
+    # print(features[0:5], labels[0:5])
+
+    # le = LabelEncoder()
+    # labels = le.fit_transform(labels) # 494021
+
+    # N, D = features.shape
+    # unique_ids = list(range(N)) # 494021
+    data_train = []
+    for i in range(len_train):
+        data_train.append([id_train[i], feature_train[i], label_train[i]])
 
     # build sisa
     n_shards, n_slices = 5, 5
     model = "Net"
     n_classes = 23
-    sisa = SISA(data, n_shards, n_slices, model, n_classes)
+    sisa = SISA(data_train, n_shards, n_slices, model, n_classes)
 
     # learn on sisa
     sisa.learn_do_all()
 
     # unlearning on SISA
     n_requests = 15
-    remove_ids = random.sample(unique_ids, n_requests)
+    remove_ids = random.sample(id_train, n_requests)
     sisa.unlearn_do_all(remove_ids)
 
     # prediction on the original trained models (no unlearning done)
     # prediction on the training set (did not split train/test before)
-    sisa_inference = SISA_inference(test_data=data,
+    sisa_inference = SISA_inference(test_data=data_train,
                                     n_shards=n_shards,
                                     n_slices=n_slices,
                                     model=model,
@@ -51,7 +65,7 @@ if __name__ == '__main__':
 
     # prediction on the original unlearned models (no unlearning done)
     # prediction on the training set (did not split train/test before)
-    sisa_inference = SISA_inference(test_data=data,
+    sisa_inference = SISA_inference(test_data=data_train,
                                     n_shards=n_shards,
                                     n_slices=n_slices,
                                     model=model,
@@ -66,7 +80,7 @@ if __name__ == '__main__':
     n_shards, n_slices = 1, 1
     model = "Net"
     n_classes = 23
-    baseline = SISA(data, n_shards, n_slices, model, n_classes)
+    baseline = SISA(data_train, n_shards, n_slices, model, n_classes)
 
     # learning on SISA baseline
     baseline.learn_do_all()
@@ -74,7 +88,7 @@ if __name__ == '__main__':
     # unlearning on SISA baseline, same remove_ids as SISA from above
     baseline.unlearn_do_all(remove_ids)
 
-    baseline_inference = SISA_inference(test_data=data,
+    baseline_inference = SISA_inference(test_data=data_train,
                                              n_shards=n_shards,
                                              n_slices=n_slices,
                                              model=model,
@@ -83,7 +97,7 @@ if __name__ == '__main__':
     y_true, y_pred = baseline_inference.inference()
     print("Accuracy Score: ", accuracy_score(y_true, y_pred))
 
-    baseline_inference = SISA_inference(test_data=data,
+    baseline_inference = SISA_inference(test_data=data_train,
                                              n_shards=n_shards,
                                              n_slices=n_slices,
                                              model=model,
