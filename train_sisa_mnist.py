@@ -5,6 +5,7 @@ from sklearn.metrics import accuracy_score
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 import random
+import numpy as np
 
 if __name__ == '__main__':
 
@@ -32,15 +33,29 @@ if __name__ == '__main__':
         data_test.append([id_test[i], feature_test[i], label_test[i]])
     print(f'dataset prepared')
 
-    # remove ids
-    n_requests = 600
-    remove_ids = random.sample(id_train, n_requests)
-
     # build sisa
-    n_shards, n_slices = 5, 5
+    n_shards, n_slices = 5, 10
     model = "Net"
     n_classes = 23
     sisa = SISA(data_train, n_shards, n_slices, model, n_classes)
+
+    # remove ids
+    # higher slice -> higher probability to get picked
+    # here, we use the exponential distribution w.r.t the slice_number
+    n_requests = int(len_train/200) #0.5% of training data
+    distribution = np.zeros((len_train,1))
+    for i in range(len_train):
+        current_slice = sisa.sample2ss[i][1]
+        distribution[i] = np.exp(current_slice)
+    distribution /= distribution.sum() # make sure the probability sum up to 1
+    
+    remove_ids = []
+    for i in range(n_requests):
+        sampled_remove_id = np.random.choice(id_train, p=list(distribution.reshape(-1,)), replace=False)
+        remove_ids.append(sampled_remove_id)
+    
+    #  this remove_ids is for uniform distribution
+    #remove_ids = random.sample(id_train, n_requests)
 
     # learn on sisa
     sisa.learn_do_all(save_path='results_sisa')
