@@ -1,4 +1,6 @@
-results/*
-results_unlearned/*
+results_baseline/*
+results_sisa/*
+results_ul_baseline/*
+results_ul_sisa/*
 data/*
 __pycache__/*

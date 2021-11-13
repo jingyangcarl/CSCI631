@@ -25,18 +25,16 @@ if __name__ == '__main__':
     id_train = list(range(len_train))
     id_test = list(range(len_test))
 
-    # features = data_all.data[:, 4:] # 494021 * 37
-    # labels = data_all.target # 494021
-    # print(features[0:5], labels[0:5])
-
-    # le = LabelEncoder()
-    # labels = le.fit_transform(labels) # 494021
-
-    # N, D = features.shape
-    # unique_ids = list(range(N)) # 494021
-    data_train = []
+    data_train, data_test = [], []
     for i in range(len_train):
         data_train.append([id_train[i], feature_train[i], label_train[i]])
+    for i in range(len_test):
+        data_test.append([id_test[i], feature_test[i], label_test[i]])
+    print(f'dataset prepared')
+
+    # remove ids
+    n_requests = 600
+    remove_ids = random.sample(id_train, n_requests)
 
     # build sisa
     n_shards, n_slices = 5, 5
@@ -45,33 +43,31 @@ if __name__ == '__main__':
     sisa = SISA(data_train, n_shards, n_slices, model, n_classes)
 
     # learn on sisa
-    sisa.learn_do_all()
+    sisa.learn_do_all(save_path='results_sisa')
 
     # unlearning on SISA
-    n_requests = 15
-    remove_ids = random.sample(id_train, n_requests)
-    sisa.unlearn_do_all(remove_ids)
+    sisa.unlearn_do_all(remove_ids, save_path='results_ul_sisa')
 
     # prediction on the original trained models (no unlearning done)
     # prediction on the training set (did not split train/test before)
-    sisa_inference = SISA_inference(test_data=data_train,
+    sisa_inference = SISA_inference(test_data=data_test,
                                     n_shards=n_shards,
                                     n_slices=n_slices,
                                     model=model,
                                     n_classes=n_classes,
-                                    learning_path="results/")
+                                    learning_path="results_sisa/")
     y_true, y_pred = sisa_inference.inference()
     print("Accuracy Score: ", accuracy_score(y_true, y_pred))
 
     # prediction on the original unlearned models (no unlearning done)
     # prediction on the training set (did not split train/test before)
-    sisa_inference = SISA_inference(test_data=data_train,
+    sisa_inference = SISA_inference(test_data=data_test,
                                     n_shards=n_shards,
                                     n_slices=n_slices,
                                     model=model,
                                     n_classes=n_classes,
-                                    learning_path="results/",
-                                    unlearning_path="results_unlearned/")
+                                    learning_path="results_sisa/",
+                                    unlearning_path="results_ul_sisa/")
     y_true, y_pred = sisa_inference.inference()
     print("Accuracy Score: ", accuracy_score(y_true, y_pred))
 
@@ -83,26 +79,26 @@ if __name__ == '__main__':
     baseline = SISA(data_train, n_shards, n_slices, model, n_classes)
 
     # learning on SISA baseline
-    baseline.learn_do_all()
+    baseline.learn_do_all(save_path='results_baseline')
 
     # unlearning on SISA baseline, same remove_ids as SISA from above
-    baseline.unlearn_do_all(remove_ids)
+    baseline.unlearn_do_all(remove_ids, save_path='results_ul_baseline')
 
-    baseline_inference = SISA_inference(test_data=data_train,
+    baseline_inference = SISA_inference(test_data=data_test,
                                              n_shards=n_shards,
                                              n_slices=n_slices,
                                              model=model,
                                              n_classes=n_classes,
-                                             learning_path="results/")
+                                             learning_path="results_baseline/")
     y_true, y_pred = baseline_inference.inference()
     print("Accuracy Score: ", accuracy_score(y_true, y_pred))
 
-    baseline_inference = SISA_inference(test_data=data_train,
+    baseline_inference = SISA_inference(test_data=data_test,
                                              n_shards=n_shards,
                                              n_slices=n_slices,
                                              model=model,
                                              n_classes=n_classes,
-                                             learning_path="results/",
-                                             unlearning_path="results_unlearned/")
+                                             learning_path="results_baseline/",
+                                             unlearning_path="results_ul_baseline/")
     y_true, y_pred = baseline_inference.inference()
     print("Accuracy Score: ", accuracy_score(y_true, y_pred))

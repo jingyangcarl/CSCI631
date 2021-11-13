@@ -13,7 +13,6 @@ if __name__ == '__main__':
 
     features = data_all.data[:, 4:] # 494021 * 37
     labels = data_all.target # 494021
-    print(features[0:5], labels[0:5])
 
     le = LabelEncoder()
     labels = le.fit_transform(labels) # 494021

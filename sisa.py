@@ -7,7 +7,7 @@ import os
 import random
 import numpy as np
 import re
-
+import time
 
 class Net(nn.Module):
     def __init__(self, input_dim, n_classes):
@@ -18,6 +18,29 @@ class Net(nn.Module):
     def forward(self, x):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
+        return x
+
+class CNN(nn.Module):
+    def __init__(self, input_dim, n_classes):
+        super().__init__()
+        self.conv1 = nn.Conv2d(input_dim, 32, 3, 1)
+        self.conv2 = nn.Conv2d(32, 64, 3, 1)
+        self.dropout1 = nn.Dropout2d(0.25)
+        self.dropout2 = nn.Dropout2d(0.5)
+        self.fc1 = nn.Linear(9216, 128)
+        self.fc2 = nn.Linear(128, n_classes)
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.max_pool2d(x, 2)
+        x = self.dropout1(x)
+        x = torch.flatten(x, 1)
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.dropout2(x)
+        x = self.fc2(x)
+        x = F.log_softmax(x, dim=1)
         return x
 
 
@@ -83,9 +106,7 @@ class SISA:
                 retrain_slice, retrain_slices[retrain_shard])
         return retrain_shards, retrain_slices
 
-    def _unlearn(self, retrain_shards, retrain_slices):
-        save_path = "results_unlearned/"
-        os.makedirs(save_path, exist_ok=True)
+    def _unlearn(self, retrain_shards, retrain_slices, save_path):
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         for i in range(self.n_shards):
             if(retrain_shards[i]):
@@ -94,15 +115,15 @@ class SISA:
                     self._train(i, j, self.batch_size, self.epochs,
                                 save_path=save_path, device=device)
 
-    def unlearn_do_all(self, remove_ids):
+    def unlearn_do_all(self, remove_ids, save_path='./results_unlearned'):
         retrain_shards, retrain_slices = self._update(remove_ids)
         print("Retrain Shards: ", retrain_shards)
         print("Retrain Slices: ", retrain_slices)
-        self._unlearn(retrain_shards, retrain_slices)
+        os.makedirs(save_path, exist_ok=True)
+        self._unlearn(retrain_shards, retrain_slices, save_path)
         print('Finish unlearning ...')
 
-    def learn_do_all(self):
-        save_path = "results/"
+    def learn_do_all(self, save_path='./results'):
         os.makedirs(save_path, exist_ok=True)
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         for i in range(self.n_shards):
@@ -114,6 +135,7 @@ class SISA:
     def _train(self, shard_num, slice_num, batch_size, epochs, device="cpu", save_path="results/", verbose=False):
         # shard_num: integer, [0..n_shard-1]
         # slice_num: integer, [0..n_slice-1]
+        tik = time.time()
 
         # step 1: collect data given a shard and slice, put to dataloader
         feature_dim = len(self.full_data[0][1])
@@ -170,8 +192,8 @@ class SISA:
         torch.save(model.state_dict(), PATH)
         # put model to SISA models
         self.models[shard_num][slice_num] = model
-        print("Finish training ... Shard: " +
-              str(shard_num) + " Slice: " + str(slice_num))
+        print("["+ device + "] Finish training ... Shard: " +
+              str(shard_num) + " Slice: " + str(slice_num) + " Using: " + str(time.time() - tik))
 
 
 class SISA_inference:
