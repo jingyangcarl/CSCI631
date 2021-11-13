@@ -36,7 +36,7 @@ if __name__ == '__main__':
     # build sisa
     n_shards, n_slices = 5, 10
     model = "Net"
-    n_classes = 23
+    n_classes = 10
     sisa = SISA(data_train, n_shards, n_slices, model, n_classes)
 
     # remove ids
