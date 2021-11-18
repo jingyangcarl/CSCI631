@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision
 
 import os
 import random
@@ -150,7 +151,7 @@ class SISA:
         # step 2: train model
         if(slice_num == 0 or not self.models[shard_num][slice_num-1]):
             # intialize a new model
-            model = eval(self.model)(feature_dim, self.n_classes)
+            model = torchvision.models.resnet18()
         else:
             # use previous slice ckpt
             model = self.models[shard_num][slice_num-1]
