@@ -2,5 +2,6 @@ results_baseline/*
 results_sisa/*
 results_ul_baseline/*
 results_ul_sisa/*
+logs/*
 data/*
 __pycache__/*
