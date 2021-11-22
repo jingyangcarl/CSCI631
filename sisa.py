@@ -1,8 +1,9 @@
 import torch
+from torch.nn.modules import padding
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision
+import torchvision.models as models
 
 import os
 import random
@@ -10,7 +11,7 @@ import numpy as np
 import re
 import time
 from sklearn.model_selection import StratifiedKFold
-from torchsampler import ImbalancedDatasetSampler
+# from torchsampler import ImbalancedDatasetSampler
 
 myseed = 242
 torch.manual_seed(myseed)
@@ -48,54 +49,75 @@ class AttackDNN(nn.Module):
         x = self.fc5(x)
         return x
 
-class Net(nn.Module):
-    def __init__(self, input_dim, n_classes):
-        super().__init__()
-        self.fc1 = nn.Linear(input_dim, 128)
-        self.fc2 = nn.Linear(128, n_classes)
-        self.intermediate_dim = 128
+# class Net(nn.Module):
+#     def __init__(self, input_dim, n_classes):
+#         super().__init__()
+#         self.fc1 = nn.Linear(input_dim, 128)
+#         self.fc2 = nn.Linear(128, n_classes)
+#         self.intermediate_dim = 128
 
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
+#     def forward(self, x):
+#         x = F.relu(self.fc1(x))
+#         x = self.fc2(x)
+#         return x
     
-    def extract(self, x):
-        return self.fc1(x)
+#     def extract(self, x):
+#         return self.fc1(x)
 
-class CNN(nn.Module):
-    def __init__(self, input_dim, n_classes):
-        super().__init__()
-        self.conv1 = nn.Conv2d(input_dim, 32, 3, 1)
-        self.conv2 = nn.Conv2d(32, 64, 3, 1)
-        self.dropout1 = nn.Dropout2d(0.25)
-        self.dropout2 = nn.Dropout2d(0.5)
-        self.fc1 = nn.Linear(9216, 128)
-        self.fc2 = nn.Linear(128, n_classes)
-        self.intermediate_dim = 128
+# class CNN(nn.Module):
+#     def __init__(self, input_dim, n_classes):
+#         super().__init__()
+#         self.conv1 = nn.Conv2d(input_dim, 32, 3, 1)
+#         self.conv2 = nn.Conv2d(32, 64, 3, 1)
+#         self.dropout1 = nn.Dropout2d(0.25)
+#         self.dropout2 = nn.Dropout2d(0.5)
+#         self.fc1 = nn.Linear(9216, 128)
+#         self.fc2 = nn.Linear(128, n_classes)
+#         self.intermediate_dim = 128
 
-    def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.max_pool2d(x, 2)
-        x = self.dropout1(x)
-        x = torch.flatten(x, 1)
-        x = self.fc1(x)
-        x = F.relu(x)
-        x = self.dropout2(x)
-        x = self.fc2(x)
-        x = F.log_softmax(x, dim=1)
-        return x
+#     def forward(self, x):
+#         x = F.relu(self.conv1(x))
+#         x = F.relu(self.conv2(x))
+#         x = F.max_pool2d(x, 2)
+#         x = self.dropout1(x)
+#         x = torch.flatten(x, 1)
+#         x = self.fc1(x)
+#         x = F.relu(x)
+#         x = self.dropout2(x)
+#         x = self.fc2(x)
+#         x = F.log_softmax(x, dim=1)
+#         return x
     
-    def extract(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.max_pool2d(x, 2)
-        x = self.dropout1(x)
-        x = torch.flatten(x, 1)
-        x = self.fc1(x)
-        return x
+#     def extract(self, x):
+#         x = F.relu(self.conv1(x))
+#         x = F.relu(self.conv2(x))
+#         x = F.max_pool2d(x, 2)
+#         x = self.dropout1(x)
+#         x = torch.flatten(x, 1)
+#         x = self.fc1(x)
+#         return x
 
+def get_model(m_name, in_features, out_features):
+
+    # reference: https://pytorch.org/vision/stable/models.html
+    model = eval(f'models.{m_name}()')
+    if 'vgg' in m_name:
+        # vgg11, vgg11_bn, vgg13, vgg13_bn, vgg16, vgg16_bn, vgg19, vgg19_bn
+        layer_in, layer_out = model.features[0],  model.classifier[-1]
+        model.features[0] = nn.Conv2d(in_features, layer_in.out_channels, kernel_size=layer_in.kernel_size, stride=layer_in.stride, padding=layer_in.padding, bias=False)
+        model.classifier[-1] = nn.Linear(layer_out.in_features, out_features)
+    elif 'resnet' in m_name:
+        # resnet34, resnet50, resnet101, resnet152
+        layer_in, layer_out = model.conv1, model.fc
+        model.conv1 = nn.Conv2d(in_features, layer_in.out_channels, kernel_size=layer_in.kernel_size, stride=layer_in.stride, padding=layer_in.padding, bias=False)
+        model.fc = nn.Linear(layer_out.in_features, out_features)
+    elif 'densenet' in m_name:
+        # densenet121, dense161, dense169, dense201
+        layer_in, layer_out = model.features[0], model.classifier
+        model.features[0] = nn.Conv2d(in_features, layer_in.out_channels, kernel_size=layer_in.kernel_size, stride=layer_in.stride, padding=layer_in.padding, bias=False)
+        model.classifier = nn.Linear(layer_out.in_features, out_features)
+
+    return model
 
 class StandardDataset(Dataset):
     def __init__(self, data):
@@ -218,7 +240,7 @@ class SISA:
         # step 2: train model
         if(slice_num == 0 or not self.models[shard_num][slice_num-1]):
             # intialize a new model
-            model = torchvision.models.resnet18()
+            model = get_model(self.model, feature_dim, self.n_classes)
         else:
             # use previous slice ckpt
             model = self.models[shard_num][slice_num-1]
@@ -294,7 +316,7 @@ class SISA_inference:
                 if(int(current_shard) >= self.n_shards or int(current_slice) < self.n_slices - 1):
                     continue
                 saved_path = os.path.join(unlearning_path, model_name)
-                model = eval(self.model)(self.feature_dim, self.n_classes)
+                model = get_model(self.model, self.feature_dim, self.n_classes)
                 model.load_state_dict(torch.load(saved_path))
                 model.to(self.device)
                 model.eval()
@@ -310,7 +332,7 @@ class SISA_inference:
             if(int(current_slice) < self.n_slices - 1):
                 continue
             saved_path = os.path.join(learning_path, model_name)
-            model = eval(self.model)(self.feature_dim, self.n_classes)
+            model = get_model(self.model, self.feature_dim, self.n_classes)
             model.load_state_dict(torch.load(saved_path))
             model.to(self.device)
             model.eval()
@@ -379,7 +401,7 @@ class SISA_completeness:
             if(int(current_shard) >= self.n_shards or int(current_slice) < self.n_slices - 1):
                 continue
             saved_path = os.path.join(unlearning_path, model_name)
-            model = eval(self.model)(self.feature_dim, self.n_classes)
+            model = get_model(self.model, self.feature_dim, self.n_classes)
             model.load_state_dict(torch.load(saved_path))
             model.to(self.device)
             for p in model.parameters(): p.requires_grad = False
@@ -395,7 +417,7 @@ class SISA_completeness:
             if(int(current_slice) < self.n_slices - 1):
                 continue
             saved_path = os.path.join(learning_path, model_name)
-            model = eval(self.model)(self.feature_dim, self.n_classes)
+            model = get_model(self.model, self.feature_dim, self.n_classes)
             model.load_state_dict(torch.load(saved_path))
             model.to(self.device)
             for p in model.parameters(): p.requires_grad = False
@@ -415,7 +437,7 @@ class SISA_completeness:
             if(int(current_slice) < self.n_slices - 1):
                 continue
             saved_path = os.path.join(learning_path, model_name)
-            model = eval(self.model)(self.feature_dim, self.n_classes)
+            model = get_model(self.model, self.feature_dim, self.n_classes)
             model.load_state_dict(torch.load(saved_path))
             model.to(self.device)
             for p in model.parameters(): p.requires_grad = False
