@@ -23,6 +23,11 @@ def load_data(args):
             root='data', train=True, transform=ToTensor(), download=True)
         data_test = datasets.CIFAR10(
             root='data', train=False, transform=ToTensor())
+    elif args.dataset == 'emnist':
+        data_train = datasets.EMNIST(
+            root='data', train=True, transform=ToTensor(), download=True, split='balanced')
+        data_test = datasets.EMNIST(
+            root='data', train=False, transform=ToTensor(), split='balanced')
 
     try:
         dataloader_train = DataLoader(data_train, batch_size=len(
