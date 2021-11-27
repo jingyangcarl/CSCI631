@@ -127,12 +127,12 @@ def run_sisa(args):
     path_baselineunlearn = os.path.join(
         args.basedir, expname, 'baseline_unlearn')
     tik = time.time()
-    logger.debug(f'Baseline learning takes {tok-tik}')
     baseline.learn_do_all(save_path=path_baselinelearn)
     tok = time.time()
+    logger.debug(f'Baseline learning takes {tok-tik}')
     baseline.unlearn_do_all(remove_ids, save_path=path_baselineunlearn)
-    logger.debug(f'Baseline unlearning takes {tok-tik}')
     tik = time.time()
+    logger.debug(f'Baseline unlearning takes {tik - tok}')
 
     # prediction on the original trained models (no unlearning done)
     sisa_inference = SISA_inference(test_data=data_test,
@@ -179,3 +179,9 @@ def run_sisa(args):
                                         logger=logger)
     y_true, y_pred = baseline_inference.inference()
     logger.debug("Accuracy Score: ", accuracy_score(y_true, y_pred))
+
+    # reset logger
+    handler_file.close()
+    handler_std.close()
+    logger.removeHandler(handler_file)
+    logger.removeHandler(handler_std)
