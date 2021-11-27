@@ -4,6 +4,8 @@ from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+from opacus import PrivacyEngine
+from opacus.utils.module_modification import replace_all_modules
 
 import os
 import random
@@ -122,6 +124,7 @@ def get_model(m_name, in_features, out_features):
                                       stride=layer_in.stride, padding=layer_in.padding, bias=False)
         model.classifier = nn.Linear(layer_out.in_features, out_features)
 
+    model = replace_all_modules(model, nn.BatchNorm2d, lambda _: nn.Identity())
     return model
 
 
@@ -178,6 +181,8 @@ class SISA:
             self.sample2ss.append([current_shard, current_slice])
         self.models = [[None for j in range(self.n_slices)]
                        for i in range(self.n_shards)]
+        self.optimizers = [[None for j in range(self.n_slices)]
+                       for i in range(self.n_shards)]
 
         # training configurations
         self.batch_size = 16
@@ -211,7 +216,7 @@ class SISA:
                 starting_slice = retrain_slices[i]
                 for j in range(starting_slice, self.n_slices):
                     self._train(i, j, self.batch_size, self.epochs,
-                                save_path=save_path, device=device)
+                                save_path=save_path, device=device, verbose=True)
 
     def unlearn_do_all(self, remove_ids, save_path='./results_unlearned'):
         retrain_shards, retrain_slices = self._update(remove_ids)
@@ -227,7 +232,7 @@ class SISA:
         for i in range(self.n_shards):
             for j in range(self.n_slices):
                 self._train(i, j, self.batch_size, self.epochs,
-                            save_path=save_path, device=device)
+                            save_path=save_path, device=device, verbose=True)
         self.logger.debug('Finish learning ...')
 
     def _train(self, shard_num, slice_num, batch_size, epochs, device="cpu", save_path="results/", verbose=False):
@@ -249,13 +254,22 @@ class SISA:
         # step 2: train model
         if(slice_num == 0 or not self.models[shard_num][slice_num-1]):
             # intialize a new model
-            model = get_model(self.model, feature_dim, self.n_classes)
+            model = get_model(self.model, feature_dim, self.n_classes).to(device)
+            privacy_engine = PrivacyEngine(
+                model,
+                sample_rate=0.01,
+                alphas=[1 + x / 10.0 for x in range(1, 100)] + list(range(12, 64)),
+                noise_multiplier=1.,
+                max_grad_norm=1.,
+                secure_rng=False,
+            )
+            optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
+            privacy_engine.attach(optimizer)
         else:
             # use previous slice ckpt
-            model = self.models[shard_num][slice_num-1]
-        model.to(device)
-
-        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+            model = self.models[shard_num][slice_num-1].to(device)
+            optimizer = self.optimizers[shard_num][slice_num-1]
+            
         criterion = torch.nn.CrossEntropyLoss()
 
         current_step = 0
@@ -280,9 +294,13 @@ class SISA:
                     # print statistics to make sure loss goes down
                     running_loss += loss.item()
                     current_step += 1
-                    if (current_step % 200 == 0):
-                        self.logger.debug('[%d, %5d] loss: %.3f' %
-                                          (epoch, current_step, running_loss / 200))
+
+                    # get budget
+                    delta=1e-4
+                    eps, best_alpha = optimizer.privacy_engine.get_privacy_spent(delta)
+                    if (current_step % 5 == 0):
+                        self.logger.debug('[%d, %5d] loss: %.3f; epsilon: %.3f' %
+                                          (epoch, current_step, running_loss / 5, eps))
                         running_loss = 0.0
 
         # step 3: saving the model
@@ -291,6 +309,7 @@ class SISA:
         torch.save(model.state_dict(), PATH)
         # put model to SISA models
         self.models[shard_num][slice_num] = model
+        self.optimizers[shard_num][slice_num] = optimizer
         self.logger.debug("[" + device + "] Finish training ... Shard: " +
                           str(shard_num) + " Slice: " + str(slice_num) + " Using: " + str(time.time() - tik))
 
