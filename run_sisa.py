@@ -1,5 +1,5 @@
 from torchvision import datasets
-from torchvision.transforms import ToTensor
+import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 import numpy as np
 import os
@@ -13,21 +13,26 @@ from sisa import SISA, SISA_inference
 
 def load_data(args):
 
+    transform = transforms.Compose([
+        transforms.Resize((32,32)),
+        transforms.ToTensor()
+    ])
+
     if args.dataset == 'mnist':
         data_train = datasets.MNIST(
-            root='data', train=True, transform=ToTensor(), download=True)
+            root='data', train=True, transform=transform, download=True)
         data_test = datasets.MNIST(
-            root='data', train=False, transform=ToTensor())
+            root='data', train=False, transform=transform)
     elif args.dataset == 'cifar10':
         data_train = datasets.CIFAR10(
-            root='data', train=True, transform=ToTensor(), download=True)
+            root='data', train=True, transform=transform, download=True)
         data_test = datasets.CIFAR10(
-            root='data', train=False, transform=ToTensor())
+            root='data', train=False, transform=transform)
     elif args.dataset == 'emnist':
         data_train = datasets.EMNIST(
-            root='data', train=True, transform=ToTensor(), download=True, split='balanced')
+            root='data', train=True, transform=transform, download=True, split='balanced')
         data_test = datasets.EMNIST(
-            root='data', train=False, transform=ToTensor(), split='balanced')
+            root='data', train=False, transform=transform, split='balanced')
 
     try:
         dataloader_train = DataLoader(data_train, batch_size=len(
