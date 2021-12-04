@@ -216,7 +216,7 @@ class SISA:
                 starting_slice = retrain_slices[i]
                 for j in range(starting_slice, self.n_slices):
                     self._train(i, j, self.batch_size, self.epochs,
-                                save_path=save_path, device=device, verbose=True)
+                                save_path=save_path, device=device, verbose=False)
 
     def unlearn_do_all(self, remove_ids, save_path='./results_unlearned'):
         retrain_shards, retrain_slices = self._update(remove_ids)
@@ -232,7 +232,7 @@ class SISA:
         for i in range(self.n_shards):
             for j in range(self.n_slices):
                 self._train(i, j, self.batch_size, self.epochs,
-                            save_path=save_path, device=device, verbose=True)
+                            save_path=save_path, device=device, verbose=False)
         self.logger.debug('Finish learning ...')
 
     def _train(self, shard_num, slice_num, batch_size, epochs, device="cpu", save_path="results/", verbose=False):
@@ -290,14 +290,14 @@ class SISA:
                 loss.backward()
                 optimizer.step()
 
+                # get budget
+                delta=1e-4
+                eps, best_alpha = optimizer.privacy_engine.get_privacy_spent(delta)
+
                 if(verbose):
                     # print statistics to make sure loss goes down
                     running_loss += loss.item()
                     current_step += 1
-
-                    # get budget
-                    delta=1e-4
-                    eps, best_alpha = optimizer.privacy_engine.get_privacy_spent(delta)
                     if (current_step % 5 == 0):
                         self.logger.debug('[%d, %5d] loss: %.3f; epsilon: %.3f' %
                                           (epoch, current_step, running_loss / 5, eps))
@@ -311,7 +311,7 @@ class SISA:
         self.models[shard_num][slice_num] = model
         self.optimizers[shard_num][slice_num] = optimizer
         self.logger.debug("[" + device + "] Finish training ... Shard: " +
-                          str(shard_num) + " Slice: " + str(slice_num) + " Using: " + str(time.time() - tik))
+                          str(shard_num) + " Slice: " + str(slice_num) + " Epsilon:" + str(eps) + " Using: " + str(time.time() - tik))
 
 
 class SISA_inference:
